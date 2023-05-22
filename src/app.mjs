@@ -68,6 +68,7 @@ const glReducer = (state, action) => {
 
         const renderer = new THREE.WebGLRenderer({depth: false});
         renderer.setClearColor(0, 0);
+        renderer.outputEncoding = THREE.LinearEncoding;
 
         const root = new THREE.Object3D();
         root.matrixAutoUpdate = false;
