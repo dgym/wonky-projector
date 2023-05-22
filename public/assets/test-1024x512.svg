@@ -1,0 +1,6 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='512'>
+    <rect x='0' y='0' width='100%' height='100%' fill='#0f8d36' />
+    <rect x='0' y='0' width='50%' height='50%' fill='#2fcd76' />
+    <rect x='50%' y='50%' width='50%' height='50%' fill='#2fcd76' />
+    <text x='50%' y='50%' text-anchor='middle' dominant-baseline='central' fill='white' font-size='30'>1024 x 512</text>
+</svg>
