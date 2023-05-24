@@ -6,7 +6,7 @@ Setting up a projector to align perfectly with a canvas can be quite time consum
 
 # Guide
   1. Connect your laptop/tablet to your projector with screen mirroring.
-  1. Start [the app](./app/), and preferably set it to fullscreen.
+  1. Start [the app](https://wonky-projector.netlify.app/app/), and preferably set it to fullscreen.
   1. Select the 'Projector' layer to show the checkerboard.
   1. Enter the size of your canvas in the toolbar, it doesn't matter if you use inches, mm or miles, the app just needs to know the aspect ratio.
   1. Line up your projector and canvas so that the canvas is completely covered by the checkerboard. For best results try not to have too much border though.
