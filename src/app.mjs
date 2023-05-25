@@ -747,7 +747,9 @@ export function Editor(props) {
                 size: new Vec2(60, 40),
 
                 image: null,
-                thumbnailImage: '../assets/projector.svg',
+                thumbnailImage: document
+                    .querySelector('#projectorThumb')
+                    .getAttribute('src'),
                 selected: false,
             },
             layers: [
@@ -792,7 +794,10 @@ export function Editor(props) {
 
     // Load the canvas images.
     useEffect(() => {
-        readImageFromUrl('../assets/projector_bg.png').then((image) => {
+        const projectorBg = document
+            .querySelector('#projectorBg')
+            .getAttribute('src');
+        readImageFromUrl(projectorBg).then((image) => {
             updateScene({type: 'updateCanvas', props: {image: image.dataUrl}});
         });
 

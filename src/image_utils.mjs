@@ -38,7 +38,7 @@ export function readImageFromFile(file) {
 
         const reader = new FileReader();
         reader.onload = (event) => {
-            img.src = results.dataUrl = event.target.result;  
+            img.src = results.dataUrl = event.target.result;
         };
         reader.readAsDataURL(file);
     });
