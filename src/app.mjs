@@ -1,18 +1,14 @@
 import { useState, createElement, useRef, useEffect, useReducer, useId } from 'react';
-import * as THREE from 'three';
+import { Vec2 as Vec2Base, Vec3, Mat3, Mat4 } from 'ogl';
+import { Renderer, Camera, Transform, Plane, Program, Mesh, Texture } from 'ogl';
 
-import {readImageFromFile, readImageFromUrl} from './image_utils.mjs';
-import {LayerList} from './layer_list.mjs';
-import {Toolbar} from './toolbar.mjs';
-import {useUndoReducer} from './use_undo_reducer.mjs';
+import { readImageFromFile, readImageFromUrl } from './image_utils.mjs';
+import { LayerList } from './layer_list.mjs';
+import { Toolbar } from './toolbar.mjs';
+import { useUndoReducer } from './use_undo_reducer.mjs';
 
 
 const e = createElement;
-const Mat3 = THREE.Matrix3;
-const Mat4 = THREE.Matrix4;
-const textureLoader = new THREE.TextureLoader();
-const Vec2 = THREE.Vector2;
-const Vec3 = THREE.Vector3;
 
 
 function clamp(v, min, max) {
@@ -22,15 +18,13 @@ function clamp(v, min, max) {
 
 const getPerspectiveModelMatrix = (mat3, mat4, sa, sb, sc, sd, da, db, dc, dd) => {
     const basisToPoints = (p1, p2, p3, p4) => {
-        const m = new Mat3();
-        m.set(
-            p1.x, p2.x, p3.x,
-            p1.y, p2.y, p3.y,
-            1,  1,  1
+        const m = new Mat3(
+            p1.x, p1.y, 1,
+            p2.x, p2.y, 1,
+            p3.x, p3.y, 1,
         );
-        const v = new Vec3(p4.x, p4.y, 1).applyMatrix3(m.clone().invert());
-        const t = new Mat3();
-        t.set(
+        const v = new Vec3(p4.x, p4.y, 1).applyMatrix3(new Mat3(...m).inverse());
+        const t = new Mat3(
             v.x, 0, 0,
             0, v.y, 0,
             0, 0, v.z,
@@ -40,19 +34,100 @@ const getPerspectiveModelMatrix = (mat3, mat4, sa, sb, sc, sd, da, db, dc, dd) =
 
     const s = basisToPoints(sa, sb, sc, sd);
     const d = basisToPoints(da, db, dc, dd);
-    d.multiply(s.invert());
-    d.multiplyScalar(1/d.elements[8]);
+    d.multiply(s.inverse());
+    for (let v=1/d[8], i=0; i<9; ++i)
+        d[i] *= v;
 
     mat3.copy(d);
 
     // Convert to a Mat4.
-    const e = d.elements;
-    mat4.fromArray([
-        e[0], e[1], 0, e[2],
-        e[3], e[4], 0, e[5],
+    mat4.set(
+        d[0], d[1], 0, d[2],
+        d[3], d[4], 0, d[5],
         0   , 0   , 1, 0   ,
-        e[6], e[7], 0, e[8]
-    ]);
+        d[6], d[7], 0, d[8]
+    );
+}
+
+
+class Vec2 extends Vec2Base {
+    rotateAround(center, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        this.sub(center);
+        const {x, y} = this;
+        this.x = x*c - y*s;
+        this.y = x*s + y*c;
+        this.add(center);
+        return this;
+    }
+
+    setX(x) {
+        this.x = x;
+        return this;
+    }
+
+    setY(y) {
+        this.y = y;
+        return this;
+    }
+
+    angle() {
+        return Math.atan2(-this.y, -this.x) + Math.PI;
+    }
+}
+
+
+class TextureProgram extends Program {
+    constructor(gl, texture, options={}) {
+        super(gl, {
+            vertex: `
+                attribute vec2 uv;
+                attribute vec3 position;
+
+                uniform mat4 modelViewMatrix;
+                uniform mat4 projectionMatrix;
+
+                varying vec2 vUv;
+
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragment: `
+                precision highp float;
+
+                uniform sampler2D tMap;
+                uniform float opacity;
+
+                varying vec2 vUv;
+
+                void main() {
+                    vec3 tex = texture2D(tMap, vUv).rgb;
+                    gl_FragColor = vec4(tex, opacity);
+                }
+            `,
+            uniforms: {
+                tMap: {value: texture},
+                opacity: {value: 1.0},
+            },
+            transparent: true,
+            ...options,
+        });
+    }
+}
+
+
+function loadTexture(gl, src, onload, options={}) {
+    const texture = new Texture(gl, options);
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+        texture.image = img;
+        onload();
+    };
+    return texture;
 }
 
 
@@ -61,29 +136,46 @@ const glReducer = (state, action) => {
     const actions = {};
 
     actions.create = () => {
-        const scene = new THREE.Scene();
+        const renderer = new Renderer();
+        const gl = renderer.gl;
+        action.el.appendChild(renderer.gl.canvas);
 
-        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 100);
+        const scene = new Transform();
+
+        const camera = new Camera(gl);
+        camera.orthographic(-1, 1, 1, -1, 1, 100);
         camera.position.z = 5;
 
-        const renderer = new THREE.WebGLRenderer({depth: false});
-        renderer.setClearColor(0, 0);
-        renderer.outputEncoding = THREE.LinearEncoding;
-
-        const root = new THREE.Object3D();
+        const root = new Transform();
         root.matrixAutoUpdate = false;
-        scene.add(root);
+        root.setParent(scene);
 
-        const black = new THREE.MeshBasicMaterial({color: 0});
-        black.depthTest = false;
+        const black = new Program(renderer.gl, {
+            vertex: `
+                attribute vec3 position;
 
-        action.el.appendChild(renderer.domElement);
+                uniform mat4 modelViewMatrix;
+                uniform mat4 projectionMatrix;
+
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragment: `
+                void main() {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false,
+        });
+
         return {
             scene: scene,
             root: root,
             camera: camera,
             renderer: renderer,
-            materials: {
+            programs: {
                 black: black,
             },
         };
@@ -94,24 +186,29 @@ const glReducer = (state, action) => {
 
         // Resize the viewport.
         const {camera, renderer, scene, root} = state;
-        renderer.setSize(rect.width, rect.height, true);
+        const {gl} = renderer;
+        renderer.setSize(rect.width, rect.height);
 
         // Clear the previous render.
-        root.clear();
+        root.children = [];
 
         // Set up the transformation matrix.
         root.matrix.copy(matrix);
 
         // Add the canvas layer.
         {
-            if (canvas.image && !state.materials[canvas.id]) {
-                const texture = textureLoader.load(canvas.image, actions.render);
-                texture.magFilter = THREE.NearestFilter;
-                const material = new THREE.MeshBasicMaterial({map: texture});
-                material.depthTest = false;
-                state.materials[canvas.id] = material;
+            if (canvas.image && !state.programs[canvas.id]) {
+                const texture = loadTexture(gl, canvas.image, actions.render);
+                const material = new TextureProgram(gl, texture, {
+                    depthTest: false,
+                    depthWrite: false,
+                });
+                state.programs[canvas.id] = material;
             }
-            const geometry = new THREE.PlaneGeometry(canvas.size.x, canvas.size.y);
+            const geometry = new Plane(gl, {
+                width: canvas.size.x,
+                height: canvas.size.y,
+            });
             const ux = canvas.size.x > canvas.size.y ? 0.5 : (canvas.size.x / canvas.size.y * 0.5);
             const uy = canvas.size.y > canvas.size.x ? 0.5 : (canvas.size.y / canvas.size.x * 0.5);
             const uvs = new Float32Array([
@@ -120,42 +217,49 @@ const glReducer = (state, action) => {
                 0.5-ux, 0.5-uy,
                 0.5+ux, 0.5-uy,
             ]);
-            geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+            geometry.attributes.uv.data = uvs;
+            geometry.attributes.uv.needsUpdate = true;
 
             // Use black if the canvas is not selected (or not loaded).
-            const material = (canvas.selected && state.materials[canvas.id]) ?
-                state.materials[canvas.id] :
-                state.materials.black;
-            const plane = new THREE.Mesh(geometry, material);
-            root.add(plane);
+            const program = (canvas.selected && state.programs[canvas.id]) ?
+                state.programs[canvas.id] :
+                state.programs.black;
+            const plane = new Mesh(gl, {geometry, program});
+            root.addChild(plane);
         }
 
         // Add the layers
         for (const layer of layers) {
-            if (!state.materials[layer.id]) {
-                const texture = textureLoader.load(layer.image, actions.render);
-                const material = new THREE.MeshBasicMaterial({map: texture, transparent: true});
-                material.depthTest = false;
-                state.materials[layer.id] = material;
+            if (!state.programs[layer.id]) {
+                const texture = loadTexture(gl, layer.image, actions.render);
+                const material = new TextureProgram(gl, texture, {
+                    depthTest: false,
+                    depthWrite: false,
+                });
+                state.programs[layer.id] = material;
             }
-            const geometry = new THREE.PlaneGeometry(layer.size.x, layer.size.y);
-            const material = state.materials[layer.id];
-            const plane = new THREE.Mesh(geometry, material);
+            const geometry = new Plane(gl, {
+                width: layer.size.x,
+                height: layer.size.y,
+            });
+            const program = state.programs[layer.id];
+            const plane = new Mesh(gl, {geometry, program});
             plane.scale.x = layer.scale.x;
             plane.scale.y = layer.scale.y;
             plane.rotation.z = layer.rotation;
             plane.position.x = layer.translation.x;
             plane.position.y = layer.translation.y;
-            material.opacity = Math.min(
+            program.uniforms.opacity.value = Math.min(
                 canvas.selected ? 0.4 : 1.0,
                 layer.opacity,
             );
-            root.add(plane);
+            root.addChild(plane);
         }
 
         requestAnimationFrame(() => {
-            renderer.render(scene, camera);
-        });        
+            gl.clearColor(0.25, 0.25, 0.25, 1.0);
+            renderer.render({scene, camera, sort: false});
+        });
 
         return state;
     };
@@ -175,7 +279,6 @@ function HandleAdapter(props, component, componentProps) {
 
     const pos = origin.clone();
     if (matrix) pos.applyMatrix3(matrix);
-    const handle_sz = 8;
 
     const getMouse = (event) => {
         const mouse = new Vec3(event.clientX, event.clientY, 1);
@@ -186,7 +289,7 @@ function HandleAdapter(props, component, componentProps) {
         if (invMatrix) {
             mouse.applyMatrix3(invMatrix);
         }
-        mouse.multiplyScalar(1/mouse.z);
+        mouse.multiply(1/mouse.z);
         return new Vec2(mouse.x, mouse.y);
     };
 
@@ -334,9 +437,9 @@ function MoveAxisHandle(props) {
         dragMove: (point) => {
             const newPos = point.clone().sub(start);
             if (axis & 1) {
-                newPos.setX(layer.translation.x);
+                newPos.x = layer.translation.x;
             } else {
-                newPos.setY(layer.translation.y);
+                newPos.y = layer.translation.y;
             }
             updateScene({
                 type: 'updateLayer',
@@ -389,16 +492,16 @@ function ScaleHandle(props) {
         origin: origin,
         dragStart: (point) => {
             start = point.clone();
-            scale = layer.scale.clone().multiplyScalar(1/point.length());
+            scale = layer.scale.clone().multiply(1/point.len());
         },
         dragMove: (point) => {
-            const newScale = scale.clone().multiplyScalar(
-                point.length() * (start.dot(point) >= 0 ? 1 : -1)
+            const newScale = scale.clone().multiply(
+                point.len() * (start.dot(point) >= 0 ? 1 : -1)
             );
             if (axis == 0) {
-                newScale.setY(layer.scale.y);
+                newScale.y = layer.scale.y;
             } else if (axis == 2) {
-                newScale.setX(layer.scale.x);
+                newScale.x = layer.scale.x;
             }
             updateScene({
                 type: 'updateLayer',
@@ -506,12 +609,12 @@ function Projector(props) {
     const canvasSize = canvas.size;
 
     // matrix maps a point from gl coordinates to the viewport.
-    const matrix = new Mat3().set(
-        rect.width*0.5, 0, rect.width*0.5,
-        0, -rect.height*0.5, rect.height*0.5,
-        0, 0, 1,
+    const matrix = new Mat3(
+        rect.width*0.5, 0, 0,
+        0, -rect.height*0.5, 0,
+        rect.width*0.5, rect.height*0.5, 1,
     );
-    const invMatrix = matrix.clone().invert();
+    const invMatrix = new Mat3(...matrix).inverse();
 
     // projectorMatrix maps a point from gl coordinates to
     // the projector.
@@ -527,7 +630,7 @@ function Projector(props) {
         new Vec2(-w2, -h2),
         ...handles,
     );
-    const invProjectorMatrix3 = projectorMatrix3.clone().invert();
+    const invProjectorMatrix3 = new Mat3(...projectorMatrix3).inverse();
 
     // Add the editing handles.
     const handleComponents = [];
@@ -542,8 +645,8 @@ function Projector(props) {
         };
         handleComponents.splice(0, 0, ...ProjectorHandles(childProps));
     }
-    const canvas2camera = matrix.clone().multiply(projectorMatrix3);
-    const camera2canvas = canvas2camera.invert();
+    const canvas2camera = new Mat3(...matrix).multiply(projectorMatrix3);
+    const camera2canvas = new Mat3(...canvas2camera).inverse();
     const mode = scene.editMode;
     for (const layer of scene.layers) {
         if (layer.selected) {
@@ -765,10 +868,10 @@ export function Editor(props) {
     const o = .95;
     const [projection, setProjection] = useState({
         handles: [
-            new THREE.Vector2(-o, o),
-            new THREE.Vector2( o, o),
-            new THREE.Vector2( o, -o),
-            new THREE.Vector2(-o, -o),
+            new Vec2(-o, o),
+            new Vec2( o, o),
+            new Vec2( o, -o),
+            new Vec2(-o, -o),
         ],
     });
 
