@@ -1,14 +1,15 @@
-import {createElement} from 'react';
-import {createRoot} from 'react-dom/client';
-
-import {Editor} from '/src/app.mjs';
+import App from '/src/app.svelte';
 
 
 async function main() {
-    document.addEventListener('dragstart', () => false);
+    document.addEventListener('dragstart', (event) => {
+        event.preventDefault();
+        return false;
+    });
 
-    const root = createRoot(document.querySelector('#root'));
-    root.render(createElement(Editor, {}));
+    new App({
+        target: document.querySelector('#root')
+    });
 
     window.setTimeout(() => window.scrollTo(0, 1), 0);
 }

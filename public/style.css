@@ -5,6 +5,10 @@ html {
   box-sizing: inherit;
 }
 
+button, input[type="submit"], input[type="reset"] {
+    all: unset;
+}
+
 
 html {
     margin: 0;

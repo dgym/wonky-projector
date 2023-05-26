@@ -1,7 +1,4 @@
-import { useReducer } from 'react';
-
-
-export function useUndoReducer(reducer, initialState, options={}) {
+export function undoReducer(reducer, initialState, options={}) {
     const {ignore=[]} = options;
 
     const undoState = {
@@ -40,6 +37,7 @@ export function useUndoReducer(reducer, initialState, options={}) {
         const newPresent = reducer(state.present, action);
 
         const replace = ignore.includes(action.type) ||
+            action.noHistory ||
             (action.historyBatchToken != undefined &&
                 action.historyBatchToken === state.lastBatchToken);
 
@@ -59,5 +57,5 @@ export function useUndoReducer(reducer, initialState, options={}) {
         };
     };
 
-    return useReducer(undoReducer, undoState);
+    return [undoState, undoReducer];
 };

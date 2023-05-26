@@ -9,9 +9,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "2.2",
     "ogl": "^0.0.117",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "showdown": "^2.1.0",
     "vite": "^4.3.2",
     "vite-plugin-ssr": "^0.4.126"
