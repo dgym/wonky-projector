@@ -1,7 +1,9 @@
 import fs from 'fs';
-import {dangerouslySkipEscape} from "vite-plugin-ssr/server";
+import { dangerouslySkipEscape } from "vite-plugin-ssr/server";
 
-export {render};
+import App from '/src/app.svelte';
+
+export { render };
 
 
 function readFileSync(path) {
@@ -27,9 +29,14 @@ function render() {
     const projectorBgSvg = readFileSync('assets/projector_bg.svg');
     const projectorBgImg = makeSvgImg(projectorBgSvg, 'projectorBg');
 
-    return dangerouslySkipEscape(content.replace('<!--templates-->',
-        templateSvg +
-        projectorThumbImg +
-        projectorBgImg,
-    ));
+    const { head, html, css } = App.render({});
+
+    return dangerouslySkipEscape(content
+        .replace('<!--root-->', html)
+        .replace('<!--templates-->',
+            templateSvg +
+            projectorThumbImg +
+            projectorBgImg,
+        )
+    );
 }

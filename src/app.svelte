@@ -1,4 +1,6 @@
 <script>
+    import { onMount } from 'svelte';
+
     import { readImageFromFile, readImageFromUrl } from './image_utils.mjs';
     import { Vec2 } from './maths.mjs';
     import { sceneReducer } from './scene.mjs';
@@ -16,9 +18,7 @@
                 size: new Vec2(60, 40),
 
                 image: null,
-                thumbnailImage: document
-                    .querySelector('#projectorThumb')
-                    .getAttribute('src'),
+                thumbnailImage: null,
                 selected: false,
             },
             layers: [
@@ -61,19 +61,30 @@
     $: scene = history.present;
 
     // Load the canvas images.
-    const projectorBg = document
-        .querySelector('#projectorBg')
-        .getAttribute('src');
-    readImageFromUrl(projectorBg).then((image) => {
-        updateScene({
-            type: 'updateCanvas',
-            props: {image: image.dataUrl},
-            noHistory: true,
+    onMount(() => {
+        const projectorThumb = document
+            .querySelector('#projectorThumb')
+            .getAttribute('src')
+        const projectorBg = document
+            .querySelector('#projectorBg')
+            .getAttribute('src');
+        readImageFromUrl(projectorBg).then((image) => {
+            updateScene({
+                type: 'updateCanvas',
+                props: {
+                    thumbnailImage: projectorThumb,
+                    image: image.dataUrl,
+                },
+                noHistory: true,
+            });
         });
     });
-    if (new URLSearchParams(window.location.search).has('example')) {
-        addLayerBySourceURL('../assets/test-1024x512.svg');
-    }
+
+    onMount(() => {
+        if (new URLSearchParams(window.location.search).has('example')) {
+            addLayerBySourceURL('../assets/test-1024x512.svg');
+        }
+    });
 
     // Set up image paste handling.
     function onPaste(event) {

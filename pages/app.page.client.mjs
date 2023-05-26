@@ -8,7 +8,8 @@ async function main() {
     });
 
     new App({
-        target: document.querySelector('#root')
+        target: document.querySelector('#root'),
+        hydrate: true,
     });
 
     window.setTimeout(() => window.scrollTo(0, 1), 0);
