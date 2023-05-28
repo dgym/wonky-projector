@@ -15,10 +15,11 @@
 
 
 <script>
-    import { Renderer, Camera, Transform } from 'ogl';
+    import { Renderer, Camera, Transform, Mesh } from 'ogl';
     import { onMount } from 'svelte';
 
-    import { Mat3 } from '../maths.mjs';
+    import { PlaneZ } from '../geometry.mjs';
+    import { Vec2, Mat3 } from '../maths.mjs';
     import PerspectiveModifier from './modifiers/perspective/main.svelte';
     import Result from './result.svelte';
     import { TextureZProgram, loadTexture } from '../renderer.mjs';
@@ -132,10 +133,26 @@
     function done() {
         const { width, height, dataUrl } = current;
         const uvMatrix = getUvMatrix(current.currentModifier+1);
+
+        // Render a thumbnail.
+        const tSize = new Vec2(width, height)
+            .multiply(50 / height);
+        renderer.setSize(...tSize);
+        gl.viewport(0, 0, ...tSize);
+        gl.scissor(0, 0, ...tSize);
+        const geometry = new PlaneZ(gl, {
+            width: 2,
+            height: 2,
+            uvMatrix,
+        });
+        const scene = new Mesh(gl, {geometry, program});
+        renderer.render({scene, camera, sort: false});
+        const thumbnailImage = canvas.toDataURL();
+
         updateImageImports({type: 'done'});
         updateScene({
             type: 'addLayerByDataURL',
-            dataUrl, width, height,
+            dataUrl, thumbnailImage, width, height,
             uvMatrix,
         });
         if (texture) {
