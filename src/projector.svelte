@@ -61,6 +61,9 @@
     let renderer = null;
     onMount(() => {
         renderer = new ProjectorRenderer(render);
+        return () => {
+            renderer.remove();
+        };
     });
 
     $: if (renderer) {

@@ -5,6 +5,11 @@ html {
   box-sizing: inherit;
 }
 
+* {
+    touch-action: none;
+    -webkit-user-select: none;
+}
+
 button, input[type="submit"], input[type="reset"] {
     all: unset;
 }
@@ -101,6 +106,11 @@ body {
     flex-direction: column;
     overflow-y: auto;
     border-right: 1px solid black;
+    touch-action: pan-y;
+}
+
+.layer-list * {
+    touch-action: pan-y;
 }
 
 
@@ -123,13 +133,11 @@ body {
     overflow: hidden;
     background: #444;
     display: flex;
-    touch-action: none;
     overscroll-behavior: none;
 }
 
 
 .composer * {
-    touch-action: none;
     overscroll-behavior: none;
 }
 
@@ -158,6 +166,30 @@ body {
 
 .composer .overlay .handles {
     z-index: 1;
+}
+
+
+.popup {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #0008;
+    z-index: 2;
+}
+
+
+.popup.active {
+    display: flex;
+    place-items: stretch;
+}
+
+
+.popup > * {
+    flex: 1;
+    background: #468;
 }
 
 

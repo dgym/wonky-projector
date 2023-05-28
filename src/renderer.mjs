@@ -1,22 +1,23 @@
-import { Renderer, Camera, Transform, Plane, Program, Mesh, Texture } from 'ogl';
+import { Renderer, Camera, Transform, Program, Mesh, Texture } from 'ogl';
 
 import { Vec2, Vec3, Mat3, Mat4, clamp, getPerspectiveModelMatrix } from './maths.mjs';
+import { PlaneZ } from './geometry.mjs';
 
 
-class TextureProgram extends Program {
+export class TextureZProgram extends Program {
     constructor(gl, texture, options={}) {
         super(gl, {
             vertex: `
-                attribute vec2 uv;
                 attribute vec3 position;
+                attribute vec3 uvz;
 
                 uniform mat4 modelViewMatrix;
                 uniform mat4 projectionMatrix;
 
-                varying vec2 vUv;
+                varying vec3 vUvz;
 
                 void main() {
-                    vUv = uv;
+                    vUvz = uvz;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
@@ -26,10 +27,10 @@ class TextureProgram extends Program {
                 uniform sampler2D tMap;
                 uniform float opacity;
 
-                varying vec2 vUv;
+                varying vec3 vUvz;
 
                 void main() {
-                    vec3 tex = texture2D(tMap, vUv).rgb;
+                    vec3 tex = texture2D(tMap, vUvz.xy/vUvz.z).rgb;
                     gl_FragColor = vec4(tex, opacity);
                 }
             `,
@@ -44,7 +45,9 @@ class TextureProgram extends Program {
 }
 
 
-function loadTexture(gl, src, onload, options={}) {
+
+
+export function loadTexture(gl, src, onload, options={}) {
     const texture = new Texture(gl, options);
     const img = new Image();
     img.src = src;
@@ -93,14 +96,41 @@ export class ProjectorRenderer {
             depthWrite: false,
         });
 
-        this.programs = {black};
+        const textureZ = new TextureZProgram(this.gl, null, {
+            depthTest: false,
+            depthWrite: false,
+        });
+
+        this.programs = { black, textureZ };
+        this.textures = {};
+
+        this.frameCallback = null;
+        this.removed = false;
+    }
+
+    remove() {
+        const {gl} = this;
+
+        this.removed = true;
+
+        for (const program of Object.values(this.programs)) {
+            program.remove();
+        }
+
+        for (const texture of Object.values(this.textures)) {
+            gl.deleteTexture(texture.texture);
+        }
     }
 
     render(props) {
+        if (this.removed) {
+            return;
+        }
+
         const {canvas, layers, matrix, rect} = props;
 
         // Resize the viewport.
-        const {camera, renderer, gl, scene, root, programs} = this;
+        const {camera, renderer, gl, scene, root, programs, textures} = this;
         renderer.setSize(rect.width, rect.height);
 
         // Clear the previous render.
@@ -111,68 +141,91 @@ export class ProjectorRenderer {
 
         // Add the canvas layer.
         {
-            if (canvas.image && !programs[canvas.id]) {
-                const texture = loadTexture(gl, canvas.image, () => this.render(props));
-                const material = new TextureProgram(gl, texture, {
-                    depthTest: false,
-                    depthWrite: false,
-                });
-                programs[canvas.id] = material;
+            if (canvas.image && !textures[canvas.id]) {
+                const texture = loadTexture(
+                    gl, canvas.image,
+                    () => this.render(props),
+                    {flipY: false},
+                );
+                textures[canvas.id] = texture;
             }
-            const geometry = new Plane(gl, {
+            const sx = canvas.size.x > canvas.size.y ? 1 : (canvas.size.x / canvas.size.y);
+            const sy = canvas.size.y > canvas.size.x ? 1 : (canvas.size.y / canvas.size.x);
+            const geometry = new PlaneZ(gl, {
                 width: canvas.size.x,
                 height: canvas.size.y,
+                uvMatrix: new Mat3(
+                    sx, 0, 0,
+                    0, sy, 0,
+                    (1-sx)/2, (1-sy)/2, 1,
+                ),
             });
-            const ux = canvas.size.x > canvas.size.y ? 0.5 : (canvas.size.x / canvas.size.y * 0.5);
-            const uy = canvas.size.y > canvas.size.x ? 0.5 : (canvas.size.y / canvas.size.x * 0.5);
-            const uvs = new Float32Array([
-                0.5-ux, 0.5+uy,
-                0.5+ux, 0.5+uy,
-                0.5-ux, 0.5-uy,
-                0.5+ux, 0.5-uy,
-            ]);
-            geometry.attributes.uv.data = uvs;
-            geometry.attributes.uv.needsUpdate = true;
 
             // Use black if the canvas is not selected (or not loaded).
-            const program = (canvas.selected && programs[canvas.id]) ?
-                programs[canvas.id] :
-                programs.black;
+            const program = (canvas.selected && textures[canvas.id]) ?
+                programs.textureZ : programs.black;
+
             const plane = new Mesh(gl, {geometry, program});
+            if (program === programs.textureZ) {
+                plane.texture = textures[canvas.id];
+                plane.onBeforeRender(({mesh}) => {
+                    mesh.program.uniforms.tMap.value = mesh.texture;
+                    mesh.program.uniforms.opacity.value = 1.0;
+                });
+            }
+
             root.addChild(plane);
         }
 
         // Add the layers
         for (const layer of layers) {
-            if (!programs[layer.id]) {
-                const texture = loadTexture(gl, layer.image, () => this.render(props));
-                const material = new TextureProgram(gl, texture, {
-                    depthTest: false,
-                    depthWrite: false,
-                });
-                programs[layer.id] = material;
+            if (!textures[layer.id]) {
+                const texture = loadTexture(
+                    gl, layer.image,
+                    () => this.render(props),
+                    {flipY: false},
+                );
+                textures[layer.id] = texture;
             }
-            const geometry = new Plane(gl, {
+            const geometry = new PlaneZ(gl, {
                 width: layer.size.x,
                 height: layer.size.y,
+                uvMatrix: layer.uvMatrix,
             });
-            const program = programs[layer.id];
+            const program = programs.textureZ;
             const plane = new Mesh(gl, {geometry, program});
             plane.scale.x = layer.scale.x;
             plane.scale.y = layer.scale.y;
             plane.rotation.z = layer.rotation;
             plane.position.x = layer.translation.x;
             plane.position.y = layer.translation.y;
-            program.uniforms.opacity.value = Math.min(
+            plane.texture = textures[layer.id];
+            plane.opacity = Math.min(
                 canvas.selected ? 0.4 : 1.0,
                 layer.opacity,
             );
+            plane.onBeforeRender(({mesh}) => {
+                mesh.program.uniforms.tMap.value = mesh.texture;
+                mesh.program.uniforms.opacity.value = mesh.opacity;
+            });
             root.addChild(plane);
         }
 
-        requestAnimationFrame(() => {
+        if (!this.frameCallback) {
+            requestAnimationFrame(() => {
+                if (this.removed) {
+                    return;
+                }
+                this.frameCallback();
+                this.frameCallback = null;
+            });
+        }
+        this.frameCallback = () => {
+            if (this.removed) {
+                return;
+            }
             gl.clearColor(0.25, 0.25, 0.25, 1.0);
             renderer.render({scene, camera, sort: false});
-        });
+        };
     }
 }

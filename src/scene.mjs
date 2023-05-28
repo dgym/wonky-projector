@@ -11,7 +11,7 @@ export function sceneReducer(scene, action) {
         };
     }
 
-    const addLayerByDataURL = (scene, dataUrl, width, height) => {
+    const addLayerByDataURL = (scene, dataUrl, width, height, uvMatrix) => {
         const canvasSize = scene.canvas.size;
         const scale = Math.min(
             canvasSize.x / width,
@@ -22,6 +22,7 @@ export function sceneReducer(scene, action) {
             id: scene.nextLayerId,
             image: dataUrl,
             thumbnailImage: dataUrl,
+            uvMatrix,
             size: new Vec2(width, height),
             scale: new Vec2(scale, scale),
             rotation: 0,
@@ -66,8 +67,8 @@ export function sceneReducer(scene, action) {
         case 'addLayer':
             return addLayer(scene, action.layer);
         case 'addLayerByDataURL':
-            const {dataUrl, width, height} = action;
-            return addLayerByDataURL(scene, dataUrl, width, height);
+            const {dataUrl, width, height, uvMatrix} = action;
+            return addLayerByDataURL(scene, dataUrl, width, height, uvMatrix);
         case 'selectLayer':
             // Also used to select the canvas.
             return selectLayer(scene, action.layer);

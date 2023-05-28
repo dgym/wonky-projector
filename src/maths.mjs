@@ -33,12 +33,14 @@ const getPerspectiveModelMatrix = (mat3, mat4, sa, sb, sc, sd, da, db, dc, dd) =
     mat3.copy(d);
 
     // Convert to a Mat4.
-    mat4.set(
-        d[0], d[1], 0, d[2],
-        d[3], d[4], 0, d[5],
-        0   , 0   , 1, 0   ,
-        d[6], d[7], 0, d[8]
-    );
+    if (mat4) {
+        mat4.set(
+            d[0], d[1], 0, d[2],
+            d[3], d[4], 0, d[5],
+            0   , 0   , 1, 0   ,
+            d[6], d[7], 0, d[8]
+        );
+    }
 }
 
 

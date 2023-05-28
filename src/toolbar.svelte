@@ -3,6 +3,7 @@
 
     export let history;
     export let updateScene;
+    export let updateImageImports;
 
     export function setHistory(h) {
         history = h;
@@ -33,10 +34,8 @@
         if (files && files.length) {
             for (const file of files) {
                 readImageFromFile(file).then((results) => {
-                    updateScene({
-                        type: 'addLayerByDataURL',
-                        ...results,
-                    });
+                    const {dataUrl, width, height} = results;
+                    updateImageImports({type: 'add', dataUrl, width, height});
                 });
             }
         }

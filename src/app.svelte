@@ -5,9 +5,11 @@
     import { Vec2 } from './maths.mjs';
     import { sceneReducer } from './scene.mjs';
     import { undoReducer } from './undo_reducer.mjs';
+    import Composer from './composer.svelte';
+    import ImageImporter from './image_importer/main.svelte';
+    import { imageImportReducer } from './image_importer/model.mjs';
     import LayerList from './layer_list.svelte';
     import Toolbar from './toolbar.svelte';
-    import Composer from './composer.svelte';
 
     let [history, _updateScene] = undoReducer(
         sceneReducer,
@@ -48,14 +50,24 @@
         projection = p;
     }
 
-    async function addLayerBySourceURL(url) {
+    let imageImports = imageImportReducer(null, {type: 'init'});
+    function updateImageImports(action) {
+        imageImports = imageImportReducer(imageImports, action);
+    }
+
+    async function addLayerBySourceURL(url, doImport=false) {
         const {dataUrl, width, height} = await readImageFromUrl(url);
-        updateScene({
-            type: 'addLayerByDataURL',
-            dataUrl: dataUrl,
-            width: width,
-            height: height,
-        });
+        if (doImport) {
+            updateImageImports({type: 'add', dataUrl, width, height});
+        } else {
+            updateScene({
+                type: 'addLayerByDataURL',
+                dataUrl,
+                width,
+                height,
+                uvMatrix: null,
+            });
+        }
     };
 
     $: scene = history.present;
@@ -81,8 +93,9 @@
     });
 
     onMount(() => {
-        if (new URLSearchParams(window.location.search).has('example')) {
-            addLayerBySourceURL('../assets/test-1024x512.svg');
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('example')) {
+            addLayerBySourceURL('../assets/test-1024x512.svg', params.has('import'));
         }
     });
 
@@ -92,10 +105,8 @@
         for (const item of items) {
             if (item.kind === 'file') {
                 readImageFromFile(item.getAsFile()).then((results) => {
-                    updateScene({
-                        type: 'addLayerByDataURL',
-                        ...results,
-                    });
+                    const {dataUrl, width, height} = results;
+                    updateImageImports({type: 'add', dataUrl, width, height});
                 });
             }
         }
@@ -104,7 +115,8 @@
 
 
 <div class='editor' on:paste={onPaste}>
-    <Toolbar {history} {updateScene} />
+    <Toolbar {history} {updateScene} {updateImageImports} />
     <LayerList {scene} {updateScene} />
     <Composer {scene} {projection} {updateScene} {updateProjection} />
+    <ImageImporter {imageImports} {updateImageImports} {updateScene} />
 </div>
